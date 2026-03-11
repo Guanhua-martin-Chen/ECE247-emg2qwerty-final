@@ -278,3 +278,93 @@ class TDSConvEncoder(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.tds_conv_blocks(inputs)  # (T, N, num_features)
+
+
+class CNNEncoder(nn.Module):
+    """
+    Temporal CNN encoder that preserves time length.
+    Input/Output: (T, N, C)
+    """
+    def __init__(
+        self,
+        num_features: int,
+        conv_channels: int = 256,
+        kernel_size: int = 5,
+        dropout: float = 0.2,
+    ) -> None:
+        super().__init__()
+        pad = kernel_size // 2  # "same" padding -> keep T
+
+        self.net = nn.Sequential(
+            nn.Conv1d(num_features, conv_channels, kernel_size=kernel_size, padding=pad),
+            nn.BatchNorm1d(conv_channels),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(conv_channels, conv_channels, kernel_size=kernel_size, padding=pad),
+            nn.BatchNorm1d(conv_channels),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        # inputs: (T, N, C) -> (N, C, T)
+        x = inputs.permute(1, 2, 0)
+        x = self.net(x)  # (N, conv_channels, T)
+        x = x.permute(2, 0, 1)  # (T, N, conv_channels)
+        return x
+
+
+class BiLSTMEncoder(nn.Module):
+    """
+    Residual BiLSTM encoder with stacked blocks.
+    Input/Output: (T, N, C)
+
+    This implements K residual blocks. Each block:
+      x -> BiLSTM(1-layer) -> Linear(proj back to C) -> Dropout -> +x -> LayerNorm
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int = 256,
+        num_layers: int = 4,   # number of residual blocks
+        dropout: float = 0.18,
+    ) -> None:
+        super().__init__()
+
+        self.blocks = nn.ModuleList()
+        self.drop = nn.Dropout(dropout)
+
+        for _ in range(num_layers):
+            lstm = nn.LSTM(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=1,          # keep 1 per block
+                bidirectional=True,
+            )
+            proj = nn.Linear(hidden_size * 2, input_size)
+            norm = nn.LayerNorm(input_size)
+
+            self.blocks.append(
+                nn.ModuleDict(
+                    {
+                        "lstm": lstm,
+                        "proj": proj,
+                        "norm": norm,
+                    }
+                )
+            )
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        x = inputs  # (T, N, C)
+
+        for block in self.blocks:
+            residual = x
+
+            out, _ = block["lstm"](x)      # (T, N, 2H)
+            out = block["proj"](out)       # (T, N, C)
+            out = self.drop(out)           # ✅ dropout actually applied
+
+            x = block["norm"](out + residual)
+
+        return x
