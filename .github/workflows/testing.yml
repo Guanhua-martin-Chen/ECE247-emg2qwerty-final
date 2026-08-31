@@ -1,6 +1,7 @@
-name: Python Package using Conda
+name: Legacy Conda Verification
 
-on: [push]
+on:
+  workflow_dispatch:
 
 jobs:
   build-linux:
