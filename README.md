@@ -1,3 +1,49 @@
+# EMG-to-Text Decoding with CNN-BiLSTM-CTC
+
+This was a UCLA ECE C147/247 Winter 2026 final project on decoding typed characters from wrist surface electromyography (sEMG). Built on Meta Reality Labs' open-source [emg2qwerty](https://github.com/facebookresearch/emg2qwerty) dataset and framework, our team evaluated alternative sequence encoders for a single-user EMG-to-text task.
+
+## Results
+
+The final report compares models on the same subject (#89335547), data split, preprocessing pipeline, training setup, and greedy CTC decoding configuration. Character Error Rate (CER) is lower-is-better.
+
+| Model | Experimental setting | Test CER |
+| --- | --- | ---: |
+| TDSConv-CTC baseline | Single-user #89335547; 16 electrode channels per wrist; greedy CTC | 22.39% |
+| CNN-BiLSTM-CTC | Single-user #89335547; 16 electrode channels per wrist; greedy CTC | **15.06%** |
+
+This is a **32.7% relative CER reduction** from the reported 22.39% TDSConv-CTC baseline to 15.06%. This is a course-team comparison, not a claim against Meta's full emg2qwerty benchmark. A separate 8-channel CNN-BiLSTM ablation reported 21.37% test CER; it did not produce the 15.06% result.
+
+## What We Built
+
+Our team developed and evaluated alternative sequence encoders on top of the Meta/UCLA framework. The CNN-BiLSTM path is:
+
+`wrist sEMG -> log spectrogram -> rotation-invariant feature front end -> temporal CNN -> residual BiLSTM blocks -> character logits -> CTC`
+
+The inherited framework supplies log-spectrogram preprocessing, `SpectrogramNorm`, the per-band rotation-invariant MLP, the dataset pipeline, and CTC infrastructure. Our CNN-BiLSTM encoder uses two same-padded 1D temporal convolutions (256 channels, kernel size 5) with BatchNorm1d, ReLU, and dropout, followed by two residual BiLSTM blocks. Each block applies a one-layer BiLSTM (hidden size 256), linear projection, dropout, residual addition, and LayerNorm. `SpectrogramNorm` uses BatchNorm2d; the model trains with `CTCLoss` and the reported comparison uses `CTCGreedyDecoder`.
+
+## My Contribution
+
+Within our UCLA course team, I focused primarily on the CNN-BiLSTM-CTC modeling path. I authored the initial CNN encoder, residual BiLSTM encoder, Lightning module, and model configuration in my working repository ([commit `8aa5358`](https://github.com/Guanhua-martin-Chen/ECE247-emg2qwerty-final/commit/8aa5358fd490d605252905a81f1b0014d5e0167d)), and contributed to model training, debugging, configuration iteration, and CER evaluation. The [shared team repository](https://github.com/Dan7HE/247) contains the final integrated experiment code and [report](https://github.com/Dan7HE/247/blob/main/cs247_final_project.pdf).
+
+## Project Context & Attribution
+
+This project used the single-user emg2qwerty task for subject #89335547. Meta Reality Labs provided the original dataset, benchmark framework, and TDSConv-based codebase; our UCLA team explored and evaluated alternative encoder architectures. See the [upstream repository](https://github.com/facebookresearch/emg2qwerty) and the [original paper](https://arxiv.org/abs/2410.20081) for the source dataset and framework.
+
+## Repository Guide
+
+- `emg2qwerty/modules.py` - CNN and residual BiLSTM encoder implementation.
+- `emg2qwerty/lightning.py` - CNN-BiLSTM-CTC Lightning module and training logic.
+- `config/model/cnn_bilstm_ctc.yaml` - CNN-BiLSTM-CTC configuration.
+- `config/model/tds_conv_ctc.yaml` - TDSConv-CTC comparison configuration.
+- `config/user/single_user.yaml` - subject #89335547 train/validation/test split.
+- `config/transforms/log_spectrogram.yaml` - log-spectrogram preprocessing and augmentation configuration.
+
+---
+
+## Legacy Course / Upstream Documentation
+
+> The documentation below is retained from the UCLA starter and upstream emg2qwerty repository for setup, attribution, and reference. Some course-specific text refers to an earlier offering; the project summary above describes our Winter 2026 work.
+
 # C147/247 Final Project
 ### Winter 2025 - _Professor Jonathan Kao_
 
